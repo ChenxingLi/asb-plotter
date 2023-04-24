@@ -1,0 +1,42 @@
+figures/
+
+# Ignore Python compiled files
+*.pyc
+__pycache__/
+
+# Ignore development tool configuration files and temporary files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore local configuration files and log files
+*.env
+*.log
+
+# Ignore generated documentation and report files
+docs/_build/
+coverage_html/
+htmlcov/
+
+# Ignore dependencies and build artifacts
+venv/
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Ignore data files and resource files
+*.csv
+*.json
+*.sqlite
+*.yaml
+*.yml
+*.ini
+
+# Ignore other temporary files
+*.bak
+*.tmp
+*.temp
+*.DS_Store
+
