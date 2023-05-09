@@ -1,20 +1,32 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from data_parse import load as load_asb
+from data_parse import parse_number
 from e2e import load as load_e2e
 from plot import BarPlot
 from pathlib import Path
 
-e2e_authdbs = ["raw", "lvmt", "lvmt64", "lvmt16", "lmpts", "mpt"]
-e2e_breakdown = ["raw", "lvmt", "lvmt64", "lvmt16", "mpt"]
-authdbs = ["lvmt", "lvmt64", "lvmt16", "mpt"]
+e2e_authdbs = ["raw", "lvmt", "lvmt64", "lvmt16", "rain", "lmpts", "mpt"]
+e2e_breakdown = ["raw", "lvmt", "lvmt64", "lvmt16", "rain", "mpt"]
+authdbs = ["lvmt", "lvmt64", "lvmt16", "rain", "mpt", "lvmt1"]
+authdbs_detail = authdbs[:-1]
 tasks = ["real", "fresh", "1m", "10m", "100m"]
 
+def maybe(func):
+    try:
+        ans = func()
+        if ans == np.nan:
+            return None
+        return ans
+    except:
+        return None
 
 def labelize(authdbs):
     def f(authdb):
         if authdb == "lmpts":
             return "LMPTs"
+        elif authdb == "lvmt":
+            return "LVMT-r"
         else:
             return authdb.upper()
     if type(authdbs) is str:
@@ -34,7 +46,7 @@ def plot_native_transfer():
         data = [load_e2e(authdb, size, erc20=False).mean_tps for authdb in e2e_authdbs]
         bp.add(size, *data)
     bp.draw(ax, space=0.3, labels=labelize(e2e_authdbs))
-    bp.number(ax, align="clllll", hspace=0.5, format=lambda x: f"{x:0.0f}")
+    bp.number(ax, align="c"+"l"*(len(e2e_authdbs)-1), hspace=0.5, format=lambda x: f"{x:0.0f}")
     ax.legend(loc=3)
     ax.set_title("Throughput for random native transfers")
     ax.set_ylabel("Transactions per second")
@@ -55,14 +67,14 @@ def plot_erc20_transfer():
         data = [load_e2e(authdb, size, erc20=True).mean_tps for authdb in e2e_authdbs]
         bp.add(size, *data)
     bp.draw(ax, space=0.3, labels=labelize(e2e_authdbs))
-    bp.number(ax, align="clllll", hspace=0.5, format=lambda x: f"{x:0.0f}")
+    bp.number(ax, align="c"+"l"*(len(e2e_authdbs)-1), hspace=0.5, format=lambda x: f"{x:0.0f}")
     ax.legend(loc=3)
     ax.set_title("Throughput for random erc20 transfers")
     ax.set_ylabel("Transactions per second")
     ax.set_xlabel("Number of initialized keys")
 
     # plt.show()
-    plt.savefig("figures/native_transfer.pdf", bbox_inches='tight')
+    plt.savefig("figures/erc20_transfer.pdf", bbox_inches='tight')
 
 
 def plot_native_breakdown():
@@ -121,79 +133,110 @@ def plot_erc20_breakdown():
 
 def plot_asb_tps():
     """ Figure 4 """
-    fig = plt.figure(figsize=(7, 3))
+    fig = plt.figure(figsize=(8, 4))
     ax = fig.add_subplot(111)
     bp = BarPlot()
 
     for size in ["real", "fresh", "1m", "10m", "100m"]:
-        data = [np.mean(load_asb(authdb, size).tps)/1000 for authdb in authdbs]
+        data = [maybe(lambda: np.mean(load_asb(authdb, size, only_time=True).tps)/1000) for authdb in authdbs]
         bp.add(size, *data)
 
     bp.draw(ax, space=0.2, labels=labelize(authdbs))
-    bp.number(ax, align="cccccc", hspace=0.5, format=lambda x: f"{x:0.0f}")
+    bp.number(ax, align="cllllll", hspace=0.5, format=lambda x: f"{x:0.0f}")
     ax.legend(loc=1)
-    ax.set_title("Throughput of authenticated storage")
+    ax.set_title("Throughput of Authenticated Storages")
     ax.set_ylabel("Operations per second (1000x)")
     ax.set_xlabel("Workloads")
     plt.savefig("figures/asb_tps.pdf", bbox_inches='tight')
-
-
-def plot_low_mem():
-    """ Figure 5 """
-
-    fig = plt.figure(figsize=(7, 3))
+    
+def plot_asb_tps_on_size():
+    fig = plt.figure(figsize=(7, 4), dpi=200)
     ax = fig.add_subplot(111)
-    bp = BarPlot()
 
-    for task in tasks:
-        data = [np.mean(load_asb("lvmt16", task, low_mem=lowmem).tps) /
-                1000 for lowmem in [False, True]]
-        bp.add(task, *data)
+    all_size = ["1m", "1600k", "2500k", "4m", "6300k", "10m", "16m", "25m", "40m", "63m", "100m"]
+    x = np.array([parse_number(x) for x in all_size])
 
-    bp.draw(ax, space=0.4, labels=["1500 MB", "800 MB"])
-    bp.number(ax, hspace=0.35, format=lambda x: f"{x:0.0f}")
-    ax.legend()
-    ax.set_title(f"Throughput of LVMT16 with different memory sizes")
-    ax.set_ylabel("Operations per second (x1000)")
-    ax.set_xlabel("Number of initialized keys")
+    marker = "o^vsDphx"
+    for (idx, algo) in enumerate(["raw", "lvmt", "lvmt64", "lvmt16", "rain", "mpt", "lvmt1"]):
+        def get_tps(size):
+            try:
+                return np.mean(load_asb(algo, size, only_time=True).tps)
+            except:
+                return 0
+        y = np.array([get_tps(size) for size in all_size])
+        ax.loglog(x[y>0], y[y>0], label=labelize(algo), marker=marker[idx])
 
-    plt.savefig("figures/asb_mem_tps.pdf", bbox_inches='tight')
+    ax.minorticks_off()
+    ax.set_xticks(x)
+    ax.set_xticklabels(["1","1.6","2.5","4","6.3","10","16","25","40","63","100"])
+    ax.set_yticks([1e3, 2e3, 5e3, 1e4,2e4,5e4,1e5,2e5,5e5])
+    ax.set_yticklabels(["1","2","5","10","20","50","100","200","500"])
+
+    ax.grid(linestyle = "--", alpha=0.5)
+    ax.legend(loc="upper left",bbox_to_anchor=[1, 1])
+    ax.set_xlabel("Keys in Ledger (in millions)")
+    ax.set_ylabel("Operations per Second (x1000)")
+    ax.set_title("Throughput of Authenticated Storages on Different Ledger Sizes")
+    ax.set_ylim(1e3,5e5)
+    plt.savefig("figures/asb_tps_on_size.pdf", bbox_inches='tight')
+
+
+# def plot_low_mem():
+#     """ Figure 5 """
+
+#     fig = plt.figure(figsize=(7, 3))
+#     ax = fig.add_subplot(111)
+#     bp = BarPlot()
+
+#     for task in tasks:
+#         data = [np.mean(load_asb("lvmt16", task, low_mem=lowmem).tps) /
+#                 1000 for lowmem in [False, True]]
+#         bp.add(task, *data)
+
+#     bp.draw(ax, space=0.4, labels=["1500 MB", "800 MB"])
+#     bp.number(ax, hspace=0.35, format=lambda x: f"{x:0.0f}")
+#     ax.legend()
+#     ax.set_title(f"Throughput of LVMT16 with different memory sizes")
+#     ax.set_ylabel("Operations per second (x1000)")
+#     ax.set_xlabel("Number of initialized keys")
+
+#     plt.savefig("figures/asb_mem_tps.pdf", bbox_inches='tight')
 
 
 def plot_ra():
     """ Figure 6(a) """
 
-    fig = plt.figure(figsize=(7, 3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     bp = BarPlot()
 
     for task in tasks:
-        data = [np.mean(load_asb(authdb, task).ra) for authdb in authdbs]
+        data = [maybe(lambda: np.mean(load_asb(authdb, task, only_time=True).ra)) for authdb in authdbs_detail]
         bp.add(task, *data)
 
-    bp.draw(ax, space=0.2, labels=labelize(authdbs))
+    bp.draw(ax, space=0.12, labels=labelize(authdbs_detail))
     bp.number(ax, hspace=0.35, format=lambda x: f"{x:0.1f}")
-    ax.legend(loc=2)
-    ax.set_title("Read amplication of authenticated storage")
+    legend = ax.legend(loc="upper center", bbox_to_anchor=[0.465, 1])
+    ax.set_title("Read Amplication of Authenticated Storages")
     ax.set_xlabel("Workloads")
-    ax.set_ylabel("Reads per operation")
+    ax.set_ylabel("Reads per Operation")
     plt.savefig("figures/asb_ra.pdf", bbox_inches='tight')
 
 
 def plot_wa():
     """ Figure 6(b) """
 
-    fig = plt.figure(figsize=(7, 3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     bp = BarPlot()
 
     for task in tasks:
-        data = [np.mean(load_asb(authdb, task).wa) for authdb in authdbs]
+        data = [maybe(lambda: np.mean(load_asb(authdb, task, only_time=True).wa)) for authdb in authdbs_detail]
         bp.add(task, *data)
 
-    bp.draw(ax, space=0.2, labels=labelize(authdbs))
+    bp.draw(ax, space=0.2, labels=labelize(authdbs_detail))
     bp.number(ax, hspace=0.35, format=lambda x: f"{x:0.1f}")
-    ax.legend(loc=2)
+    ax.legend(loc="upper center", bbox_to_anchor=[0.465, 1])
     ax.set_title("Write amplication of authenticated storage")
     ax.set_xlabel("Workloads")
     ax.set_ylabel("Writes per operation")
@@ -203,24 +246,23 @@ def plot_wa():
 def plot_rs():
     """ Figure 7(a) """
 
-    fig = plt.figure(figsize=(7, 3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     bp = BarPlot()
 
-    def read_size(x): return x.rs * x.rn / 50000
+    def read_size(x): return x.rs * (1 - x.rempty/(x.rn+x.rempty))
 
     for task in tasks:
         data = [np.mean(read_size(load_asb(authdb, task)))
-                for authdb in authdbs]
+                for authdb in authdbs_detail]
         bp.add(task, *data)
 
-    bp.draw(ax, space=0.2, labels=labelize(authdbs))
+    bp.draw(ax, space=0.2, labels=labelize(authdbs_detail))
     bp.number(ax, align="cccccc", hspace=0.5, format=lambda x: f"{x:0.0f}")
-    ax.legend(loc=2)
-    ax.set_title("Data reads per operation")
+    ax.legend(loc="upper center", bbox_to_anchor=[0.6, 1])
+    ax.set_title("Data Size per Read Operation on Backend")
     ax.set_xlabel("Workloads")
-    ax.set_ylabel("Data size (bytes)")
-    # plt.show()
+    ax.set_ylabel("Data Size (bytes)")
     plt.savefig("figures/asb_rs.pdf", bbox_inches='tight')
 
 # Figure 7(b)
@@ -229,25 +271,73 @@ def plot_rs():
 def plot_ws():
     """ Figure 7(b) """
 
-    fig = plt.figure(figsize=(7, 3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     bp = BarPlot()
 
-    def write_size(x): return x.ws * x.wn / 50000
+    def write_size(x): return x.ws
 
     for task in tasks:
         data = [np.mean(write_size(load_asb(authdb, task)))
-                for authdb in authdbs]
+                for authdb in authdbs_detail]
         bp.add(task, *data)
 
-    bp.draw(ax, space=0.2, labels=labelize(authdbs))
+    bp.draw(ax, space=0.2, labels=labelize(authdbs_detail))
     bp.number(ax, align="cccccc", hspace=0.5, format=lambda x: f"{x:0.0f}")
     ax.legend(loc=2)
-    ax.set_title("Data writes per operation")
+    ax.set_title("Data Size per Write Operation on Backend")
     ax.set_xlabel("Workloads")
-    ax.set_ylabel("Data size (bytes)")
-    # plt.show()
+    ax.set_ylabel("Data Size (bytes)")
     plt.savefig("figures/asb_ws.pdf", bbox_inches='tight')
+    
+def plot_rc():
+    fig = plt.figure(figsize=(8,3), dpi=200)
+    ax = fig.add_subplot(111)
+
+    x = np.arange(10,100,10)
+    marker = "o^vsDphx"
+    for (idx, algo) in enumerate(authdbs_detail):
+        y = load_asb(algo, "100m").rc.mean(axis=1)[:9]
+        ax.semilogy(x[y>0], y[y>0], label=labelize(algo), marker=marker[idx])
+
+    ax.minorticks_off()
+    yticks = [30,50,70,100,200,300,500,700]
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([0] + yticks[1:])
+
+    ax.grid(linestyle = "--", alpha=0.5)
+    ax.legend()
+    ax.set_xlabel("Percentiles")
+    ax.set_ylabel("Data Size (Bytes)")
+    ax.set_title("Backend Read Operations: Data Size Distribution")
+    ax.set_ylim(30,700)
+    plt.savefig("figures/asb_rc.pdf", bbox_inches='tight')
+
+    
+def plot_wc():
+    fig = plt.figure(figsize=(8,3), dpi=200)
+    ax = fig.add_subplot(111)
+
+    x = np.arange(10,100,10)
+    marker = "o^vsDphx"
+    for (idx, algo) in enumerate(authdbs_detail):
+        y = load_asb(algo, "100m").wc.mean(axis=1)[:9]
+        y[y==0] = np.full((9,),30)[y==0]
+        ax.semilogy(x, y, label=labelize(algo), marker=marker[idx])
+
+    ax.minorticks_off()
+    yticks = [30,50,70,100,200,300,500,700]
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([0] + yticks[1:])
+
+    ax.grid(linestyle = "--", alpha=0.5)
+    ax.legend()
+    ax.set_xlabel("Percentiles")
+    ax.set_ylabel("Data Size (Bytes)")
+    ax.set_title("Backend Write Operations: Data Size Distribution")
+    ax.set_ylim(30,700)
+    plt.savefig("figures/asb_wc.pdf", bbox_inches='tight')
+
 
 
 if __name__ == "__main__":
@@ -258,8 +348,11 @@ if __name__ == "__main__":
     plot_native_breakdown()
     plot_erc20_breakdown()
     plot_asb_tps()
-    plot_low_mem()
+    plot_asb_on_size()
+#     plot_low_mem()
     plot_ra()
     plot_wa()
     plot_rs()
     plot_ws()
+    plot_rc()
+    plot_wc()

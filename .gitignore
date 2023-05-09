@@ -1,4 +1,6 @@
 figures/
+*.ipynb
+.ipynb_checkpoints/
 
 # Ignore Python compiled files
 *.pyc
