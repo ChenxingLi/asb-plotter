@@ -45,7 +45,7 @@ This tool is designed for parsing the experiment traces of authenticated storage
     ASB_E2E_PATH = "../conflux-rust"
     ```
     
-    These paths should be relative to the location of the `[path.py](http://path.py)` file. 
+    These paths should be relative to the location of the `path.py` file. 
     
 8. Parse the experiment results and plot figures by running the following command:
     

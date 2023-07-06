@@ -16,7 +16,7 @@ def ceilY(y):
     ymax = np.ceil(y*1.1/ytick)*ytick
     return ymax,ytick
 
-
+remove_none = np.vectorize(lambda x: 0 if x is None or x == np.nan else x)
 
 class LinePlot:
     def __init__(self):
@@ -48,7 +48,7 @@ class BarPlot:
             assert self.cols == len(args)
         self.data.append(np.array(args))
         self.label.append(label)
-        self.maxY = max(self.maxY,max(args))
+        self.maxY = max(self.maxY,max(remove_none(args)))
         
     def draw(self,ax,labels=None,space=0.3):
         if labels is None:
@@ -63,6 +63,7 @@ class BarPlot:
         length = len(self.data)
         base = [(2*x+1)*w/2-width/2 for x in range(self.cols)]
         for idx, v in enumerate(np.array(self.data).T):
+            v = remove_none(v)
             ax.bar(np.arange(length)+base[idx], v, width = w,label=labels[idx])
             
         ax.set_xticks(np.arange(length))
@@ -89,6 +90,8 @@ class BarPlot:
         base = [(2*x+1)*w/2-width/2 for x in range(self.cols)]
         for i, cluster in enumerate(self.data):
             for j,v in enumerate(cluster):
+                if v is None:
+                    continue
                 pos = align[j]
                 x = base[j] + i
                 y = v + height * 0.05 * kwargs.get("hspace",1)
